@@ -10,6 +10,8 @@ const join = document.getElementById('join');
 let device;
 let sendTransport;
 let recvTRansport;
+let producer;
+let consumer;
 
 start.addEventListener('click',async () => {
     // await initializeSocket();
@@ -50,12 +52,58 @@ async function createSendTransport(){
         console.log("Params from send tranport: ",params);
         try{
             sendTransport = await device.createSendTransport(params);
+            
+            sendTransport.on('connect',async ({dtlsParameters},callback,errback) => {
+                try{
+                    socket.emit('producer-connect',{
+                        id: sendTransport.id,
+                        dtlsParameters
+                    })
+                    callback();
+                } catch(err){
+                    console.log("Error emitting produce-connect: ",err);
+                    errback(err);
+                }
+            })
+            sendTransport.on('produce',async (parameters,callback,errback) => {
+                try{
+                    const { id } = socket.emit('produce',{
+                        id: sendTransport.id,
+                        kind: parameters.kind,
+                        rtpParameters: parameters.rtpParameters
+                    }) 
+                    callback({id});
+                } catch(err){
+                    errback(err);
+                }
+            })
+            sendTransport.on('icestatechange',(state) => {
+                console.log("IceStateChange: ",state);
+            })
+            sendTransport.on('connectiostatechange',(state) => {
+                console.log("ConnectionStateChange: ",state);
+            })
+            await produceMedia();
         } catch(err){
             console.log("Error creating sendTransport: ",err);
         }
         
     })
+    
 }
+async function produceMedia(){
+    const stream = await navigator.mediaDevices.getUserMedia({video: true});
+    localVideo.srcObject = stream;
+    const track = stream.getVideoTracks()[0];
+    try{
+        producer = await sendTransport.produce({track});
+    } catch(err){
+        console.log("error in producing media: ",err);
+    }
+    
+    
+}
+
 async function createReceiveTransport(){
 
 }

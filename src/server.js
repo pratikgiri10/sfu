@@ -38,7 +38,10 @@ const mediaCodecs = [
       }
 ]
 async function createWorker(){
-    worker = await mediaSoup.createWorker();
+    worker = await mediaSoup.createWorker({
+        rtcMinPort: 10000,
+        rtcMaxPort: 10010
+    });
     console.log(`WorkerPid: ${worker.pid}`);
 
     router = await worker.createRouter({mediaCodecs});
@@ -52,11 +55,15 @@ async function createWebRtcTransport(){
                 listenInfos :
                 [
                   {
-                    protocol         : "udp", 
-                    ip               : "127.0.0.1", 
-                    announcedAddress : null
+                    // protocol         : "udp", 
+                    ip               : "192.168.1.37", 
+                    // announcedIp      : "103.94.255.146"
                   }
-                ]
+                ],
+                // webRtcServer : webRtcServer,
+                enableUdp    : true,
+                enableTcp    : true,
+                // preferUdp    : true
               }
         )
         transport.on('icestatechange',(state) => {
@@ -102,6 +109,25 @@ io.on('connection',async (socket) => {
             console.log(`Error creating producer transport: ${err}`);
         }
        
+    })
+    socket.on('producer-connect',async ({dtlsParameters}) => {
+        try{
+           
+            await producerTransport.connect({dtlsParameters});
+            console.log("producer-connect event: ",producerTransport.dtlsParameters);
+        } catch(err){
+            console.log('error connecting ',err);
+        }
+        
+    })
+    socket.on('produce',async({kind, rtpParameters}) => {
+        try{
+            await producerTransport.produce({kind, rtpParameters});
+            console.log("produce event");
+        } catch(err){
+            console.log('error producing: ',err);
+        }
+        
     })
 
     
