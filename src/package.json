@@ -1,0 +1,17 @@
+{
+  "name": "src",
+  "version": "1.0.0",
+  "description": "",
+  "main": "server.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "node --watch server.js"
+  },
+  "author": "pratik",
+  "license": "ISC",
+  "dependencies": {
+    "express": "^4.21.0",
+    "mediasoup": "^3.14.14",
+    "socket.io": "^4.8.0"
+  }
+}
