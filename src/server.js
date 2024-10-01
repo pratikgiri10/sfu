@@ -4,6 +4,7 @@ const mediaSoup = require('mediasoup');
 const { Server } = require('socket.io');
 const { createServer } = require('http');
 const cors = require('cors');
+const { IceParameters } = require('mediasoup/node/lib/fbs/web-rtc-transport');
 
 app.use(cors());
 const http = createServer(app);
@@ -14,6 +15,8 @@ const io = new Server(http,{
 let worker;
 let router;
 let rtpCapabilities;
+let producerTransport;
+let consumerTransport;
 
 const mediaCodecs = [
     {
@@ -34,17 +37,49 @@ const mediaCodecs = [
         }
       }
 ]
+async function createWorker(){
+    worker = await mediaSoup.createWorker();
+    console.log(`WorkerPid: ${worker.pid}`);
+
+    router = await worker.createRouter({mediaCodecs});
+    console.log(`Router: ${router}`);
+    
+}
+async function createWebRtcTransport(){
+    try{
+        const transport = await router.createWebRtcTransport(
+            {
+                listenInfos :
+                [
+                  {
+                    protocol         : "udp", 
+                    ip               : "127.0.0.1", 
+                    announcedAddress : null
+                  }
+                ]
+              }
+        )
+        transport.on('icestatechange',(state) => {
+            console.log(`IceStateChange: ${state}`);
+        })
+        transport.on('dtlstatechange',(state) => {
+            console.log(`dtlsStateChange: ${state}`);
+        })
+        return transport;
+    } catch(err){
+        console.log("Cannot create transport: ",err);
+    }
+    
+    
+}
 
 io.on('connection',async (socket) => {
     console.log(`A user connected: ${socket.id}`);
-    async function createWorker(){
-        worker = await mediaSoup.createWorker();
-        console.log(`WorkerPid: ${worker.pid}`);
-    
-        router = await worker.createRouter({mediaCodecs});
-        console.log(`Router: ${router}`);
-        rtpCapabilities = router.rtpCapabilities;
-        socket.on('getRtpCapabilities',async (_,callback) => {
+   
+
+    await createWorker();
+    rtpCapabilities = router.rtpCapabilities;
+    socket.on('getRtpCapabilities',async (_,callback) => {
             try{
                 callback(rtpCapabilities);
             }catch(err){
@@ -52,10 +87,23 @@ io.on('connection',async (socket) => {
                
             }
             
-        });
-    }
+    });
+    socket.on('createSendTransport',async(rtpCapabilities,callback) => {
+        try{
+            producerTransport = await createWebRtcTransport();
+            console.log(`Producer Transport created: ${producerTransport}`);
+            callback({
+                id: producerTransport.id,
+                iceParameters: producerTransport.iceParameters,
+                iceCandidates: producerTransport.iceCandidates,
+                dtlsParameters: producerTransport.dtlsParameters
+            })
+        } catch(err){
+            console.log(`Error creating producer transport: ${err}`);
+        }
+       
+    })
 
-    await createWorker();
     
     // console.log('router rtpCapabilities: ',rtpCapabilities);
 })

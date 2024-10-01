@@ -8,11 +8,17 @@ const start = document.getElementById('start');
 const join = document.getElementById('join');
 
 let device;
+let sendTransport;
+let recvTRansport;
 
 start.addEventListener('click',async () => {
     // await initializeSocket();
     console.log('start button')
     await initializeDevice();
+    setTimeout(function(){
+        createSendTransport();
+
+    },1000)
 })
 join.addEventListener('click',async () => {
     // await initializeSocket();
@@ -38,7 +44,17 @@ async function initializeDevice(){
     })
 }
 async function createSendTransport(){
-
+    if(!device)
+        console.log("Device not initialized");
+    socket.emit('createSendTransport',device.rtpCapabilities,async (params) => {
+        console.log("Params from send tranport: ",params);
+        try{
+            sendTransport = await device.createSendTransport(params);
+        } catch(err){
+            console.log("Error creating sendTransport: ",err);
+        }
+        
+    })
 }
 async function createReceiveTransport(){
 
