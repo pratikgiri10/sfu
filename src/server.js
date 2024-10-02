@@ -17,6 +17,8 @@ let router;
 let rtpCapabilities;
 let producerTransport;
 let consumerTransport;
+let producer;
+let consumer;
 
 const mediaCodecs = [
     {
@@ -57,13 +59,13 @@ async function createWebRtcTransport(){
                   {
                     // protocol         : "udp", 
                     ip               : "192.168.1.37", 
-                    // announcedIp      : "103.94.255.146"
+                    // announcedIp      : "103.94.255.131" 
+                    //"103.94.255.131" 192.168.1.37
                   }
                 ],
-                // webRtcServer : webRtcServer,
                 enableUdp    : true,
                 enableTcp    : true,
-                // preferUdp    : true
+                preferUdp    : true
               }
         )
         transport.on('icestatechange',(state) => {
@@ -114,7 +116,7 @@ io.on('connection',async (socket) => {
         try{
            
             await producerTransport.connect({dtlsParameters});
-            console.log("producer-connect event: ",producerTransport.dtlsParameters);
+            console.log(`producer-connect event: ${producerTransport.dtlsParameters}`);
         } catch(err){
             console.log('error connecting ',err);
         }
@@ -122,13 +124,58 @@ io.on('connection',async (socket) => {
     })
     socket.on('produce',async({kind, rtpParameters}) => {
         try{
-            await producerTransport.produce({kind, rtpParameters});
-            console.log("produce event");
+            producer = await producerTransport.produce({kind, rtpParameters});
+            console.log("produce event: ",producer.id);
         } catch(err){
             console.log('error producing: ',err);
         }
         
     })
+    socket.on('createRecvTransport',async (rtpCapabilities,callback) => {
+        try{
+            consumerTransport = await createWebRtcTransport();
+            console.log(`Consumer Transport created: ${consumerTransport}`);
+            callback({
+                id: consumerTransport.id,
+                iceParameters: consumerTransport.iceParameters,
+                iceCandidates: consumerTransport.iceCandidates,
+                dtlsParameters:consumerTransport.dtlsParameters
+            })
+        } catch(err){
+            console.log("error creating consumer transport: ",err);
+        }
+    })
+    socket.on('consumer-connect',async({dtlsParameters}) => {
+        try{
+            await consumerTransport.connect({dtlsParameters});
+            console.log("consumer connected")
+        } catch(err){
+            console.log("error connecting consumer: ",err);
+        }
+    })
+    socket.on('consume',async({rtpCapabilities},callback) => {
+        try{
+            consumer = await consumerTransport.consume({
+                rtpCapabilities,
+                producerId: producer.id,
+                paused: true
+            });
+            console.log("consumed");
+            callback({
+                id: consumer.id,
+                producerId: producer.id,
+                kind: consumer.kind,
+                rtpParameters: consumer.rtpParameters
+            });
+        } catch(err){
+            console.log("error consuming: ",err);
+        }
+        socket.on('resume',async () => {
+            await consumer.resume();
+            console.log("consumer resumed");
+        })
+    })
+    
 
     
     // console.log('router rtpCapabilities: ',rtpCapabilities);

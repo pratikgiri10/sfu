@@ -9,7 +9,7 @@ const join = document.getElementById('join');
 
 let device;
 let sendTransport;
-let recvTRansport;
+let recvTransport;
 let producer;
 let consumer;
 
@@ -20,12 +20,17 @@ start.addEventListener('click',async () => {
     setTimeout(function(){
         createSendTransport();
 
-    },1000)
+    },500);
+    
 })
 join.addEventListener('click',async () => {
     // await initializeSocket();
     console.log('join button')
     await initializeDevice();
+    setTimeout(function(){
+        createRecvTransport();
+
+    },500)
 })
 
 
@@ -55,6 +60,7 @@ async function createSendTransport(){
             
             sendTransport.on('connect',async ({dtlsParameters},callback,errback) => {
                 try{
+                    console.log("producer connect event")
                     socket.emit('producer-connect',{
                         id: sendTransport.id,
                         dtlsParameters
@@ -67,6 +73,7 @@ async function createSendTransport(){
             })
             sendTransport.on('produce',async (parameters,callback,errback) => {
                 try{
+                    console.log('produce event')
                     const { id } = socket.emit('produce',{
                         id: sendTransport.id,
                         kind: parameters.kind,
@@ -80,7 +87,7 @@ async function createSendTransport(){
             sendTransport.on('icestatechange',(state) => {
                 console.log("IceStateChange: ",state);
             })
-            sendTransport.on('connectiostatechange',(state) => {
+            sendTransport.on('connectionstatechange',(state) => {
                 console.log("ConnectionStateChange: ",state);
             })
             await produceMedia();
@@ -92,11 +99,14 @@ async function createSendTransport(){
     
 }
 async function produceMedia(){
+    console.log("producing media")
     const stream = await navigator.mediaDevices.getUserMedia({video: true});
     localVideo.srcObject = stream;
     const track = stream.getVideoTracks()[0];
     try{
+        console.log('before producing')
         producer = await sendTransport.produce({track});
+        console.log("produced media")
     } catch(err){
         console.log("error in producing media: ",err);
     }
@@ -104,6 +114,59 @@ async function produceMedia(){
     
 }
 
-async function createReceiveTransport(){
+async function createRecvTransport(){
+    if(!device)
+        console.log("Device not initialized");
+    socket.emit('createRecvTransport',device.rtpCapabilities,async (params) => {
+        
+        try{
+            recvTransport = await device.createRecvTransport(params);
+            console.log("recv transport created: ",params);
+            recvTransport.on('connect',async ({dtlsParameters},callback,errback) => {
+                try{
+                    console.log('consumer connect');
+                    socket.emit('consumer-connect',{                        
+                        dtlsParameters
+                    })
+                    callback();
+                } catch(err){
+                    console.log("Error emitting consumer-connect: ",err);
+                    errback(err);
+                }
+            })
+           
+            recvTransport.on('connectionstatechange',(state) => {
+                console.log("Consumer ConnectionStateChange: ",state);
+            })
+            console.log("calling consume")
+            await consume();
+        } catch(err){
+            console.log("error in recv transport: ",err);
+        }
+    })
+    
+}
+async function consume(){
+    console.log("consume...");
+        socket.emit('consume',{rtpCapabilities: device.rtpCapabilities},async (params) => {
+            try{
+                console.log("before consuming")
+                consumer = await recvTransport.consume({
+                    id: params.id,
+                    producerId: params.producerId,
+                    kind: params.kind,
+                    rtpParameters: params.rtpParameters
+                });
+                console.log('track')
+                // Render the remote video track into a HTML video element.
+                const { track } = consumer;
 
+                remoteVideo.srcObject = new MediaStream([ track ]);
+                socket.emit('resume');
+            } catch(err){
+                console.log("error consuming: ",err);
+            }
+        })
+        
+    
 }
